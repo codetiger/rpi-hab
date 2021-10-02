@@ -8,11 +8,11 @@ class GPSModule(Thread):
     gps = None
     latitude = 0.0
     longitude = 0.0
-    altitude = 0
+    altitude = 0.0
     fix_status = 0
     satellites = 0
 
-    def __init__(self, portname="/dev/serial0", timeout=2, baudrate=9600):
+    def __init__(self, portname="/dev/ttyUSB0", timeout=2, baudrate=9600):
         logging.getLogger("HABControl")
         logging.info('Initialising GPS Module')
         try:
@@ -57,16 +57,17 @@ class GPSModule(Thread):
                     self.longitude = 0
 
                 if self.fix_status >= 3:
-                    self.altitude = round(msg.hMSL / 1000.0)
+                    self.altitude = msg.hMSL / 1000.0
                 else:
-                    self.altitude = 0
+                    self.altitude = 0.0
 
-                if self.altitude < 0:
-                    self.altitude = 0
+                if self.altitude < 0.0:
+                    self.altitude = 0.0
         except Exception as e:
             logging.error("Unable to read from GPS Chip - %s" % str(e))
 
     def close(self):
+        logging.info("Closing GPS Module object")
         self.running = False
         self.gps.close()
         self.gps = None

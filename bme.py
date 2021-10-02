@@ -36,7 +36,7 @@ class BME680Module(Thread):
     def run(self):
         while self.running:
             self.readData()
-            time.sleep(0.25)
+            time.sleep(0.5)
 
     def readData(self):
         try:

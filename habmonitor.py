@@ -17,7 +17,7 @@ write_api = client.write_api(write_options=SYNCHRONOUS)
 
 logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', level=logging.INFO)
 
-fmt = 'ffHBBffffBBB'
+fmt = '>fffBBffffBBBL'
 packetSize = calcsize(fmt)
 logging.info('Packet Size: %d' % packetSize)
 
@@ -26,39 +26,64 @@ if loraSerial == None:
     logging.error('Unable to initialise Lora Chip')
     exit(0)
 
+def waitForData(length):
+    bytesToRead = loraSerial.inWaiting()
+    while bytesToRead < length:
+        bytesToRead = loraSerial.inWaiting()
+
+    data = loraSerial.read(length)
+    # loraSerial.flush()
+    return data
+
 logging.info('Polling:')
 try:
     while True:
         try:
-            bytesToRead = loraSerial.inWaiting()
-            while bytesToRead < packetSize:
-                bytesToRead = loraSerial.inWaiting()
+            header = waitForData(3)
 
-            data = loraSerial.read(packetSize)
-            (gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
-                env_temperature, env_pressure, env_humidity, env_gas_resistance,
-                rpi_disk_usage, rpi_cpu_load, rpi_cpu_temperature) = unpack(fmt, data)
-            logging.info((gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
-                env_temperature, env_pressure, env_humidity, env_gas_resistance,
-                rpi_disk_usage, rpi_cpu_load, rpi_cpu_temperature))
+            high = int(header[0])
+            low = int(header[1])
+            dataid = (high << 8) | low
+            dataSize = int(header[2])
+            logging.info("IdHigh: %d IdLow: %d Size: %d" % (high, low, dataSize))
 
-            point = Point("payloaddata")\
-                .tag("host", "payload")\
-                .field("latitude", gps_latitude)\
-                .field("longitude", gps_longitude)\
-                .field("altitude", gps_altitude)\
-                .field("fixstatus", gps_fix_status)\
-                .field("satellites", gps_satellites)\
-                .field("temperature", env_temperature)\
-                .field("pressure", env_pressure)\
-                .field("humidity", env_humidity)\
-                .field("gasresistance", env_gas_resistance)\
-                .field("rpidiskusage", rpi_disk_usage)\
-                .field("rpicpuload", rpi_cpu_load)\
-                .field("rpicputemperature", rpi_cpu_temperature)\
-                .time(datetime.utcnow(), WritePrecision.NS)
+            data = waitForData(dataSize)
+            if dataSize == packetSize:
+                (gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
+                    env_temperature, env_pressure, env_humidity, env_gas_resistance,
+                    rpi_disk_usage, rpi_cpu_load, rpi_cpu_temperature, tmstamp) = unpack(fmt, data)
+                tmstamp = datetime.fromtimestamp(tmstamp)
+                logging.info((gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
+                    env_temperature, env_pressure, env_humidity, env_gas_resistance,
+                    rpi_disk_usage, rpi_cpu_load, rpi_cpu_temperature, tmstamp))
 
-            write_api.write(bucket, org, point)
+                point = Point("payloaddata")\
+                    .tag("host", "payload")\
+                    .field("latitude", gps_latitude)\
+                    .field("longitude", gps_longitude)\
+                    .field("altitude", gps_altitude)\
+                    .field("fixstatus", gps_fix_status)\
+                    .field("satellites", gps_satellites)\
+                    .field("temperature", env_temperature)\
+                    .field("pressure", env_pressure)\
+                    .field("humidity", env_humidity)\
+                    .field("gasresistance", env_gas_resistance)\
+                    .field("rpidiskusage", rpi_disk_usage)\
+                    .field("rpicpuload", rpi_cpu_load)\
+                    .field("rpicputemperature", rpi_cpu_temperature)\
+                    .time(tmstamp, WritePrecision.NS)
+
+                write_api.write(bucket, org, point)
+
+                packet = bytearray()
+                packet.append(0xbc) #Address High
+                packet.append(0x01) #Address Low
+                packet.append(0x04) #Chennal
+                packet.append(header[0])
+                packet.append(header[1])
+
+                loraSerial.write(packet)
+                # loraSerial.flush()
 
         except Exception as e:
             logging.error("Error while parsing data - %s" % str(e))

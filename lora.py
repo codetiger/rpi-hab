@@ -19,7 +19,6 @@ MODE_SLEEP = 3
 class LoraModule(Thread):
     ser = None
     dbConn = None
-    readerThread = None
     running = True
 
     def __init__(self):
@@ -50,19 +49,16 @@ class LoraModule(Thread):
         packet.append(0xc0)
         packet.append(0xbc) #Address High
         packet.append(0x01) #Address Low
-        packet.append(0x1a)
+        packet.append(0x3a)
         packet.append(0x04) #Chennal
         packet.append(0xc4)
 
-        logging.info("Sending Packet Size: %d Data: %s" % (len(packet), packet.hex()))
+        logging.info("Sending Config Packet Size: %d Data: %s" % (len(packet), packet.hex()))
         self.ser.write(packet)
         time.sleep(0.1)
         self.setMode(MODE_NORMAL)
         time.sleep(0.1)
-        self.ser.baudrate = 9600
-
-        self.readerThread = Thread(target=self.recieve, args=())
-        self.readerThread.start()
+        self.ser.baudrate = 115200
 
     def setMode(self, mode):
         if mode == MODE_NORMAL:
@@ -85,12 +81,15 @@ class LoraModule(Thread):
     def run(self):
         while self.running:
             aux_state = GPIO.input(AUX_PIN)
-            logging.info("Aux State: %d Bytes Waiting: %d" % (aux_state, self.ser.in_waiting))
+            # logging.info("Aux State: %d Bytes Waiting: %d" % (aux_state, self.ser.in_waiting))
+
+            if self.ser and self.ser.in_waiting > 0:
+                self.recieve()
 
             if self.ser and aux_state and self.ser.in_waiting == 0:
                 self.transmit()
 
-            time.sleep(0.2)
+            time.sleep(1.2)
 
     def transmit(self):
         try:
@@ -115,18 +114,17 @@ class LoraModule(Thread):
             logging.error("Could not send data to Lora Port - %s" % str(e))
 
     def recieve(self):
-        while self.running:
-            if self.ser.in_waiting >= 2:
-                try:
-                    data = self.ser.read(2)
-                    if len(data) == 2:
-                        high = int(data[0])
-                        low = int(data[1])
-                        dataid = (high << 8) | low
-                        logging.info("Recieved ACK for %d" % (dataid))
-                        self.dbConn.execute("UPDATE habdata SET ack = 1 WHERE id = ?", [dataid])
-                except Exception as e:
-                    logging.error("Could not update ack to SQLite - %s" % str(e))
+        if self.ser.in_waiting >= 2:
+            try:
+                data = self.ser.read(2)
+                if len(data) == 2:
+                    high = int(data[0])
+                    low = int(data[1])
+                    dataid = (high << 8) | low
+                    logging.info("Recieved ACK for %d" % (dataid))
+                    self.dbConn.execute("UPDATE habdata SET ack = 1 WHERE id = ?", [dataid])
+            except Exception as e:
+                logging.error("Could not update ack to SQLite - %s" % str(e))
 
     def sendData(self, data):
         try:

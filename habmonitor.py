@@ -17,11 +17,11 @@ write_api = client.write_api(write_options=SYNCHRONOUS)
 
 logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', level=logging.INFO)
 
-fmt = '>fffBBffffBBBL'
+fmt = '>ffHBHHHIBBBL'
 packetSize = calcsize(fmt)
 logging.info('Packet Size: %d' % packetSize)
 
-loraSerial = serial.Serial('/dev/tty.usbserial-0001', 9600, timeout=5, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
+loraSerial = serial.Serial('/dev/tty.usbserial-0001', 115200, timeout=5, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
 if loraSerial == None:
     logging.error('Unable to initialise Lora Chip')
     exit(0)
@@ -32,7 +32,6 @@ def waitForData(length):
         bytesToRead = loraSerial.inWaiting()
 
     data = loraSerial.read(length)
-    # loraSerial.flush()
     return data
 
 logging.info('Polling:')
@@ -41,17 +40,20 @@ try:
         try:
             header = waitForData(3)
 
-            high = int(header[0])
-            low = int(header[1])
+            high = int(header[0]) & 0xff
+            low = int(header[1]) & 0xff
             dataid = (high << 8) | low
             dataSize = int(header[2])
             logging.info("IdHigh: %d IdLow: %d Size: %d" % (high, low, dataSize))
 
             data = waitForData(dataSize)
             if dataSize == packetSize:
-                (gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
+                (gps_latitude, gps_longitude, gps_altitude, fixpack, 
                     env_temperature, env_pressure, env_humidity, env_gas_resistance,
                     rpi_disk_usage, rpi_cpu_load, rpi_cpu_temperature, tmstamp) = unpack(fmt, data)
+                gps_fix_status = (fixpack >> 4) & 0xf
+                gps_satellites = fixpack & 0xf
+
                 tmstamp = datetime.fromtimestamp(tmstamp)
                 logging.info((gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
                     env_temperature, env_pressure, env_humidity, env_gas_resistance,
@@ -73,7 +75,7 @@ try:
                     .field("rpicputemperature", rpi_cpu_temperature)\
                     .time(tmstamp, WritePrecision.NS)
 
-                write_api.write(bucket, org, point)
+                # write_api.write(bucket, org, point)
 
                 packet = bytearray()
                 packet.append(0xbc) #Address High

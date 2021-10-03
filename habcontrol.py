@@ -24,15 +24,16 @@ rpi_disk = DiskUsage()
 rpi_load = LoadAverage()
 rpi_cpu = CPUTemperature()
 
-fmt = '>fffBBffffBBBL'
+fmt = '>ffHBHHHIBBBL'
 logging.info("Size of packet: %d" % calcsize(fmt))
 
 def packData():
     tmstamp = int(datetime.now().timestamp())
 
+    fixpack = ((gps.fix_status & 0xf) << 4) & (gps.satellites & 0xf)
     output_data = (
-        gps.latitude, gps.longitude, gps.altitude, gps.fix_status, gps.satellites, 
-        bme680.temperature, bme680.pressure, bme680.humidity, bme680.gas_resistance,
+        gps.latitude, gps.longitude, round(gps.altitude), fixpack, 
+        round(bme680.temperature), round(bme680.pressure), round(bme680.humidity), round(bme680.gas_resistance),
         round(rpi_disk.usage), round(rpi_load.value * 100.0), round(rpi_cpu.temperature), tmstamp)
 
     logging.info(output_data)

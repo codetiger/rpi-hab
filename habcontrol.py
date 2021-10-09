@@ -24,19 +24,18 @@ rpi_disk = DiskUsage()
 rpi_load = LoadAverage()
 rpi_cpu = CPUTemperature()
 
-fmt = '>ffHBHHHIBBBL'
+fmt = '>ffHBHHHIBL'
 logging.info("Size of packet: %d" % calcsize(fmt))
 
 def packData():
     tmstamp = int(datetime.now().timestamp())
-
-    fixpack = ((gps.fix_status & 0xf) << 4) & (gps.satellites & 0xf)
+    fixpack = ((gps.fix_status & 0xf) << 4) | (gps.satellites & 0xf)
     output_data = (
         gps.latitude, gps.longitude, round(gps.altitude), fixpack, 
         round(bme680.temperature), round(bme680.pressure), round(bme680.humidity), round(bme680.gas_resistance),
-        round(rpi_disk.usage), round(rpi_load.value * 100.0), round(rpi_cpu.temperature), tmstamp)
+        round(rpi_cpu.temperature), tmstamp)
 
-    logging.info(output_data)
+    # logging.info(output_data)
     packed_data = pack(fmt, *output_data)
     return packed_data
 
@@ -45,7 +44,8 @@ try:
     while lora.isAlive():
         lora.sendData(packData())
         lora.join(5)
-        # time.sleep(10)
+        if not lora.hasChunkData():
+            lora.sendData(camera.thumbnail)
 
 except KeyboardInterrupt:
     logging.info("Closing program")

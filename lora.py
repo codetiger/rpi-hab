@@ -31,7 +31,7 @@ class LoraModule(Thread):
 
         self.setupPort()
         self.dbConn = sqlite3.connect('data.db', detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
-        self.dbConn.execute("CREATE TABLE IF NOT EXISTS habdata(id INTEGER PRIMARY KEY, data BLOB NOT NULL, created timestamp NOT NULL, ack INT DEFAULT 0 NOT NULL);")
+        self.dbConn.execute("CREATE TABLE IF NOT EXISTS habdata(id INTEGER PRIMARY KEY, data BLOB NOT NULL, chunked INT DEFAULT 0 NOT NULL, created timestamp NOT NULL, ack INT DEFAULT 0 NOT NULL);")
 
         Thread.__init__(self)
         self.running = True
@@ -50,7 +50,7 @@ class LoraModule(Thread):
         packet.append(0xbc) #Address High
         packet.append(0x01) #Address Low
         packet.append(0x3a)
-        packet.append(0x04) #Chennal
+        packet.append(0x04) #Channel
         packet.append(0xc4)
 
         logging.info("Sending Config Packet Size: %d Data: %s" % (len(packet), packet.hex()))
@@ -89,27 +89,31 @@ class LoraModule(Thread):
             if self.ser and aux_state and self.ser.in_waiting == 0:
                 self.transmit()
 
-            time.sleep(1.2)
-
     def transmit(self):
         try:
-            row = self.dbConn.execute("SELECT * FROM habdata WHERE ack = 0 ORDER BY created DESC LIMIT 1").fetchone()
+            packet = bytearray()
+            packet.append(0xbc) #Address High
+            packet.append(0x02) #Address Low
+            packet.append(0x04) #Channel
 
-            if row:
-                packet = bytearray()
-                packet.append(0xbc) #Address High
-                packet.append(0x02) #Address Low
-                packet.append(0x04) #Chennal
-                packet.append((int(row[0]) & 0xff00) >> 8) # higher byte of id
-                packet.append(int(row[0]) & 0xff) # lower byte of id
-                packet.append(int(len(row[1])) & 0xff) # size of data
-                packet.extend(row[1]) # data
+            rows = self.dbConn.execute("SELECT * FROM habdata WHERE ack = 0 ORDER BY chunked ASC, created DESC LIMIT 3").fetchall()
+            # logging.info(rows)
+            for row in rows:
+                if len(packet) + len(row[1]) <= 58:
+                    packet.append((int(row[0]) & 0xff00) >> 8) # higher byte of id
+                    packet.append(int(row[0]) & 0xff) # lower byte of id
+                    size = int(len(row[1])) & 0xff
+                    size *= (-1 if row[2] else 1)
+                    size = size.to_bytes(1, byteorder='big', signed=True)[0]
+                    packet.append(size) # size of data
+                    packet.extend(row[1]) # data
+                else:
+                    break
 
+            if len(packet) > 3:
                 logging.info("Sending Packet Size: %d Data: %s" % (len(packet), packet.hex()))
                 self.ser.write(packet)
-            else:
-                logging.info("No data to send")
-
+                time.sleep(1.25)
         except Exception as e:
             logging.error("Could not send data to Lora Port - %s" % str(e))
 
@@ -127,10 +131,41 @@ class LoraModule(Thread):
                 logging.error("Could not update ack to SQLite - %s" % str(e))
 
     def sendData(self, data):
+        CHUNK_SIZE = 53
+        isChunked = len(data) > CHUNK_SIZE
+        totalChunks = int(len(data) / CHUNK_SIZE) + 1
         try:
-            self.dbConn.execute("INSERT INTO habdata(data, created) VALUES (?, datetime('now'));", [sqlite3.Binary(data)])
+            if isChunked:
+                logging.info("Data: Chunked %d, totalChunks %d" % (isChunked, totalChunks))
+                if totalChunks < 255:
+                    for i in range(0, totalChunks):
+                        dt = data[i*CHUNK_SIZE:(i+1)*CHUNK_SIZE]
+                        packet = bytearray()
+                        packet.append(i)
+                        packet.append(totalChunks)
+                        packet.extend(dt)
+                        logging.info("Data added to Queue: %s", packet.hex())
+                        self.dbConn.execute("INSERT INTO habdata(data, chunked, created) VALUES (?, 1, datetime('now'));", [sqlite3.Binary(packet)])
+                else:
+                    logging.error("Unable to send file, check file size")
+            else:
+                logging.info("Data added to Queue: %s", data.hex())
+                self.dbConn.execute("INSERT INTO habdata(data, created) VALUES (?, datetime('now'));", [sqlite3.Binary(data)])
         except Exception as e:
             logging.error("Could not insert to SQLite - %s" % str(e))
+
+    def hasChunkData(self):
+        try:
+            row = self.dbConn.execute("SELECT COUNT(*) FROM habdata WHERE ack = 0 and chunked = 1").fetchone()
+            if row and row[0] > 0:
+                logging.info("Chunk pending transmit: %d" % (row[0]))
+                return True
+            else:
+                self.dbConn.execute("DELETE FROM habdata WHERE ack = 1 and chunked = 1")
+                return False
+        except Exception as e:
+            logging.error("Could not read from SQLite - %s" % str(e))
+            return False
 
     def close(self):
         logging.info("Closing Lora Module object")

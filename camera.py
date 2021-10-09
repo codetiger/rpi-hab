@@ -3,9 +3,12 @@
 import time, logging
 from picamera import PiCamera
 from threading import Thread
+from PIL import Image
+import io
 
 class CameraModule(Thread):
     camera = None
+    thumbnail = None
 
     def __init__(self):
         logging.getLogger("HABControl")
@@ -30,7 +33,15 @@ class CameraModule(Thread):
 
     def saveCameraImage(self, folder="./images/"):
         try:
-            self.camera.capture(folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg")
+            filename = folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg"
+            self.camera.capture(filename)
+
+            thbnl = Image.open(filename)
+            thbnl.thumbnail((320,180))
+            imgByteArr = io.BytesIO()
+            thbnl.save(imgByteArr, format="jpeg", quality=75)
+            self.thumbnail = imgByteArr.getvalue()
+            # logging.info("Compressed Image Size: %d" % (len(self.thumbnail)))
         except Exception as e:
             logging.error("Unable to read Camera - %s" % str(e))
 

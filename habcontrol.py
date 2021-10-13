@@ -17,7 +17,7 @@ logging.info('Starting High Altitude Balloon Controller...')
 
 gps = GPSModule()
 bme680 = BME680Module()
-lora = LoraModule()
+lora = LoraModule(addressLow=0x01, dataTimer=True, delay=1.25)
 camera = CameraModule()
 logging.info("Loaded all thread modules")
 rpi_disk = DiskUsage()

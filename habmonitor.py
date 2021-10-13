@@ -5,31 +5,17 @@ import serial
 import pickle, traceback
 from pathlib import Path
 from struct import *
+from lora import *
 
 from datetime import datetime
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb import InfluxDBClient
 
-token = "lmT3TlBem_yckZS4iSkWphYoJudAzvrE9WGD3MNFX4JaJ4OnnAj3CMWuhhdqt8GwGnYEqthXh2I2DeGR4KowfQ=="
-org = "HABControl"
-bucket = "hab"
-client = InfluxDBClient(url="http://localhost:8086", token=token)
-write_api = client.write_api(write_options=SYNCHRONOUS)
+client = InfluxDBClient(host='localhost', port=8086)
+client.switch_database('hab')
 
 logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', level=logging.INFO)
 
-loraSerial = serial.Serial('/dev/tty.usbserial-0001', 115200, timeout=5, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
-if loraSerial == None:
-    logging.error('Unable to initialise Lora Chip')
-    exit(0)
-
-def waitForData(length):
-    bytesToRead = loraSerial.inWaiting()
-    while bytesToRead < length:
-        bytesToRead = loraSerial.inWaiting()
-
-    data = loraSerial.read(length)
-    return data
+lora = LoraModule(addressLow=0x02, dataTimer=False, delay=1.0)
 
 def extractSensorData(data):
     fmt = '>ffHBHHHIBL'
@@ -47,31 +33,16 @@ def extractSensorData(data):
         env_temperature, env_pressure, env_humidity, env_gas_resistance,
         rpi_cpu_temperature, tmstamp))
 
-    point = Point("payloaddata")\
-        .tag("host", "payload")\
-        .field("latitude", gps_latitude)\
-        .field("longitude", gps_longitude)\
-        .field("altitude", gps_altitude)\
-        .field("fixstatus", gps_fix_status)\
-        .field("satellites", gps_satellites)\
-        .field("temperature", env_temperature)\
-        .field("pressure", env_pressure)\
-        .field("humidity", env_humidity)\
-        .field("gasresistance", env_gas_resistance)\
-        .field("rpicputemperature", rpi_cpu_temperature)\
-        .time(tmstamp, WritePrecision.NS)
-
-    # write_api.write(bucket, org, point)
-
-def sendAck(idBytes):
-    packet = bytearray()
-    packet.append(0xbc) #Address High
-    packet.append(0x01) #Address Low
-    packet.append(0x04) #Chennal
-    packet.append(idBytes[0])
-    packet.append(idBytes[1])
-    loraSerial.write(packet)
-
+    json_body = [{
+        "measurement": "payloaddata",
+        "time": tmstamp,
+        "fields": {
+            "latitude": gps_latitude, "longitude": gps_longitude, "altitude": gps_altitude, "fixstatus": gps_fix_status, "satellites": gps_satellites,
+            "temperature": env_temperature, "pressure": env_pressure, "humidity": env_humidity, "gasresistance": env_gas_resistance,
+            "rpicputemperature": rpi_cpu_temperature,
+        }
+    }]
+    client.write_points(json_body)
 
 def updateChunkData(fileData):
     filep = open('filechunks', 'wb')
@@ -100,12 +71,11 @@ def wirteFileData(data):
         fileData = []
     updateChunkData(fileData)
 
-
 logging.info('Waiting for signal:')
 try:
     while True:
         try:
-            header = waitForData(3)
+            header = lora.waitForData(3)
 
             high = int(header[0]) & 0xff
             low = int(header[1]) & 0xff
@@ -116,17 +86,24 @@ try:
                 dataSize = -dataSize
             logging.info("DataId: %d Size: %d isChunked: %d" % (dataid, dataSize, isChunked))
 
-            data = waitForData(dataSize)
+            data = lora.waitForData(dataSize)
             if not isChunked:
                 extractSensorData(data)
             else:
                 wirteFileData(data)
 
-            sendAck(header)
+            packet = bytearray()
+            packet.append(0xbc)
+            packet.append(0x01)
+            packet.append(0x04)
+            packet.append(high)
+            packet.append(low)
+            lora.transmit(packet) #sending ack
         except Exception as e:
             logging.error("Error while parsing data - %s" % str(e))
             traceback.print_exc()
-            # time.sleep(1)
 
 except KeyboardInterrupt:
+    lora.close()
+    client.close()
     exit(0)

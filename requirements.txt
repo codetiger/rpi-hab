@@ -1,0 +1,4 @@
+bme680
+pyserial
+picamera
+pillow

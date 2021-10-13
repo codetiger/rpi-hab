@@ -16,46 +16,54 @@ MODE_WAKEUP = 1
 MODE_POWER_SAVING = 2
 MODE_SLEEP = 3
 
+MAX_PACKET_SIZE = 58
+
 class LoraModule(Thread):
     ser = None
     dbConn = None
     running = True
+    delayAfterTransmit = 1.5
 
-    def __init__(self):
+    def __init__(self, port="/dev/serial0", addressHigh=0xbc, addressLow=0x01, dataTimer=True, delay=1.5):
         logging.getLogger("HABControl")
         logging.info('Initialising Lora Module')
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(AUX_PIN, GPIO.IN)
         GPIO.setup(M0_PIN, GPIO.OUT)
         GPIO.setup(M1_PIN, GPIO.OUT)
+        self.delayAfterTransmit = delay
 
-        self.setupPort()
-        self.dbConn = sqlite3.connect('data.db', detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
-        self.dbConn.execute("CREATE TABLE IF NOT EXISTS habdata(id INTEGER PRIMARY KEY, data BLOB NOT NULL, chunked INT DEFAULT 0 NOT NULL, created timestamp NOT NULL, ack INT DEFAULT 0 NOT NULL);")
+        self.setupPort(port=port, addressHigh=addressHigh, addressLow=addressLow)
 
-        Thread.__init__(self)
-        self.running = True
-        self.start()
+        if dataTimer:
+            self.dbConn = sqlite3.connect('data.db', detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
+            self.dbConn.execute("CREATE TABLE IF NOT EXISTS habdata(id INTEGER PRIMARY KEY, data BLOB NOT NULL, chunked INT DEFAULT 0 NOT NULL, created timestamp NOT NULL, ack INT DEFAULT 0 NOT NULL);")
 
-    def setupPort(self):
+            Thread.__init__(self)
+            self.running = True
+            self.start()
+
+    def setupPort(self, port, addressHigh, addressLow):
         self.setMode(MODE_SLEEP)
         try:
-            self.ser = serial.Serial("/dev/serial0", 9600, timeout=1, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
+            self.ser = serial.Serial(port, 9600, timeout=1, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
         except Exception as e:
             logging.error("Could not Open Lora Port - %s" % str(e))
             self.ser = None
 
-        packet = bytearray()
-        packet.append(0xc0)
-        packet.append(0xbc) #Address High
-        packet.append(0x01) #Address Low
-        packet.append(0x3a)
-        packet.append(0x04) #Channel
-        packet.append(0xc4)
+        # packet = bytes([0xc4, 0xc4, 0xc4])
+        # logging.info("Reset Lora Module Data: %s" % (packet.hex()))
+        # self.ser.write(packet)
+        # time.sleep(0.2)
 
+        packet = bytes([0xc0, addressHigh, addressLow, 0x3a, 0x04, 0xc4])
         logging.info("Sending Config Packet Size: %d Data: %s" % (len(packet), packet.hex()))
         self.ser.write(packet)
         time.sleep(0.1)
+        res = self.waitForData(6)
+        logging.info("Config confirmation: %s" % (res.hex()))
+        time.sleep(0.1)
+
         self.setMode(MODE_NORMAL)
         time.sleep(0.1)
         self.ser.baudrate = 115200
@@ -84,22 +92,28 @@ class LoraModule(Thread):
             # logging.info("Aux State: %d Bytes Waiting: %d" % (aux_state, self.ser.in_waiting))
 
             if self.ser and self.ser.in_waiting > 0:
-                self.recieve()
+                self.recieveThread()
 
             if self.ser and aux_state and self.ser.in_waiting == 0:
-                self.transmit()
+                self.transmitThread()
 
-    def transmit(self):
+    def transmit(self, data):
+        try:
+            logging.info("Sending Packet Size: %d Data: %s" % (len(data), data.hex()))
+            self.ser.write(data)
+            time.sleep(self.delayAfterTransmit)
+        except Exception as e:
+            logging.error("Could not send data to Lora Port - %s" % str(e))
+
+    def transmitThread(self):
         try:
             packet = bytearray()
-            packet.append(0xbc) #Address High
-            packet.append(0x02) #Address Low
-            packet.append(0x04) #Channel
-
+            packet.append(0xbc)
+            packet.append(0x02)
+            packet.append(0x04)
             rows = self.dbConn.execute("SELECT * FROM habdata WHERE ack = 0 ORDER BY chunked ASC, created DESC LIMIT 3").fetchall()
-            # logging.info(rows)
             for row in rows:
-                if len(packet) + len(row[1]) <= 58:
+                if len(packet) + len(row[1]) <= MAX_PACKET_SIZE:
                     packet.append((int(row[0]) & 0xff00) >> 8) # higher byte of id
                     packet.append(int(row[0]) & 0xff) # lower byte of id
                     size = int(len(row[1])) & 0xff
@@ -111,13 +125,19 @@ class LoraModule(Thread):
                     break
 
             if len(packet) > 3:
-                logging.info("Sending Packet Size: %d Data: %s" % (len(packet), packet.hex()))
-                self.ser.write(packet)
-                time.sleep(1.25)
+                self.transmit(packet)
         except Exception as e:
             logging.error("Could not send data to Lora Port - %s" % str(e))
 
-    def recieve(self):
+    def waitForData(self, length):
+        bytesToRead = self.ser.inWaiting()
+        while bytesToRead < length:
+            bytesToRead = self.ser.inWaiting()
+
+        data = self.ser.read(length)
+        return data
+
+    def recieveThread(self):
         if self.ser.in_waiting >= 2:
             try:
                 data = self.ser.read(2)
@@ -131,7 +151,7 @@ class LoraModule(Thread):
                 logging.error("Could not update ack to SQLite - %s" % str(e))
 
     def sendData(self, data):
-        CHUNK_SIZE = 53
+        CHUNK_SIZE = MAX_PACKET_SIZE - 5 # Dataid (2 bytes), Size (1 byte), Chunk index (1byte), Total Chunks (1 byte)
         isChunked = len(data) > CHUNK_SIZE
         totalChunks = int(len(data) / CHUNK_SIZE) + 1
         try:
@@ -144,7 +164,7 @@ class LoraModule(Thread):
                         packet.append(i)
                         packet.append(totalChunks)
                         packet.extend(dt)
-                        logging.info("Data added to Queue: %s", packet.hex())
+                        # logging.info("Data added to Queue: %s", packet.hex())
                         self.dbConn.execute("INSERT INTO habdata(data, chunked, created) VALUES (?, 1, datetime('now'));", [sqlite3.Binary(packet)])
                 else:
                     logging.error("Unable to send file, check file size")

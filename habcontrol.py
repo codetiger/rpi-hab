@@ -17,7 +17,7 @@ logging.info('Starting High Altitude Balloon Controller...')
 
 gps = GPSModule()
 bme680 = BME680Module()
-lora = LoraModule(addressLow=0x01, dataTimer=True, delay=1.25)
+lora = LoraModule(addressLow=0x01, dataTimer=True, delay=0.2)
 camera = CameraModule()
 logging.info("Loaded all thread modules")
 rpi_disk = DiskUsage()
@@ -25,7 +25,7 @@ rpi_load = LoadAverage()
 rpi_cpu = CPUTemperature()
 
 fmt = '>ffHBHHHIBL'
-logging.info("Size of packet: %d" % calcsize(fmt))
+logging.debug("Size of packet: %d" % calcsize(fmt))
 
 def packData():
     tmstamp = int(datetime.now().timestamp())
@@ -35,7 +35,7 @@ def packData():
         round(bme680.temperature), round(bme680.pressure), round(bme680.humidity), round(bme680.gas_resistance),
         round(rpi_cpu.temperature), tmstamp)
 
-    # logging.info(output_data)
+    logging.debug(output_data)
     packed_data = pack(fmt, *output_data)
     return packed_data
 

@@ -6,21 +6,22 @@ import pickle, traceback
 from pathlib import Path
 from struct import *
 from lora import *
+import shutil
 
 from datetime import datetime
 from influxdb import InfluxDBClient
 
-client = InfluxDBClient(host='localhost', port=8086)
+client = InfluxDBClient(host='127.0.0.1', port=8086)
 client.switch_database('hab')
 
 logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', level=logging.INFO)
 
-lora = LoraModule(addressLow=0x02, dataTimer=False, delay=1.0)
+lora = LoraModule(addressLow=0x02, dataTimer=False, delay=0.2)
 
 def extractSensorData(data):
     fmt = '>ffHBHHHIBL'
     packetSize = calcsize(fmt)
-    logging.info('Packet Size: %d' % packetSize)
+    logging.debug('Packet Size: %d' % packetSize)
 
     (gps_latitude, gps_longitude, gps_altitude, fixpack, 
         env_temperature, env_pressure, env_humidity, env_gas_resistance,
@@ -29,7 +30,7 @@ def extractSensorData(data):
     gps_satellites = fixpack & 0xf
 
     tmstamp = datetime.fromtimestamp(tmstamp)
-    logging.info((gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
+    logging.debug((gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
         env_temperature, env_pressure, env_humidity, env_gas_resistance,
         rpi_cpu_temperature, tmstamp))
 
@@ -42,7 +43,8 @@ def extractSensorData(data):
             "rpicputemperature": rpi_cpu_temperature,
         }
     }]
-    client.write_points(json_body)
+    res = client.write_points(json_body, time_precision='s')
+    logging.debug("Write to Influx: %d" %(res))
 
 def updateChunkData(fileData):
     filep = open('filechunks', 'wb')
@@ -55,20 +57,19 @@ def readChunkData():
     filep.close()
     return fileData
 
-updateChunkData([])
+updateChunkData({})
 
 def wirteFileData(data):
     fileData = readChunkData()
-    fileData.append((data[0], data[1], data[2:]))
-    logging.info("File chunk index: %d / %d" % (data[0], data[1]))
+    fileData[data[0]] = data[2:]
+    logging.debug("File chunk index: %d / %d" % (data[0], data[1]))
     if len(fileData) == data[1]:
-        fileData.sort(key=lambda tup: tup[0])
-        file = open('latest.jpg', 'wb')
-        for dt in fileData:
-            file.write(dt[2])
+        file = open('images/latest.jpg', 'wb')
+        for i in range(0, len(fileData)):
+            file.write(fileData[i])
         file.close()
-        os.replace('latest.jpg', 'images/hab-' + time.strftime("%d-%H%M%S") + ".jpg")
-        fileData = []
+        shutil.copyfile('images/latest.jpg', 'images/hab-' + time.strftime("%d-%H%M%S") + ".jpg")
+        fileData = {}
     updateChunkData(fileData)
 
 logging.info('Waiting for signal:')

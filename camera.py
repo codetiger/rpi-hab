@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 import time, logging
-from picamera import PiCamera
+from datetime import datetime
+from picamera import PiCamera, Color
 from threading import Thread
 from PIL import Image
 import io
@@ -33,11 +34,15 @@ class CameraModule(Thread):
 
     def saveCameraImage(self, folder="./images/"):
         try:
+            self.camera.annotate_background = Color('black')
+            self.camera.annotate_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.camera.annotate_text_size = 48
+
             filename = folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg"
             self.camera.capture(filename)
 
             thbnl = Image.open(filename)
-            thbnl.thumbnail((320,180))
+            thbnl.thumbnail((384,216))
             imgByteArr = io.BytesIO()
             thbnl.save(imgByteArr, format="jpeg", quality=75)
             self.thumbnail = imgByteArr.getvalue()

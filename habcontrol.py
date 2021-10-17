@@ -17,7 +17,7 @@ logging.info('Starting High Altitude Balloon Controller...')
 
 gps = GPSModule()
 bme680 = BME680Module()
-lora = LoraModule(addressLow=0x01, dataTimer=True, delay=0.2)
+lora = LoraModule(addressLow=0x01, dataTimer=True, delay=0.25)
 camera = CameraModule()
 logging.info("Loaded all thread modules")
 rpi_disk = DiskUsage()
@@ -28,7 +28,7 @@ fmt = '>ffHBHHHIBL'
 logging.debug("Size of packet: %d" % calcsize(fmt))
 
 def packData():
-    tmstamp = int(datetime.now().timestamp())
+    tmstamp = int(datetime.utcnow().timestamp())
     fixpack = ((gps.fix_status & 0xf) << 4) | (gps.satellites & 0xf)
     output_data = (
         gps.latitude, gps.longitude, round(gps.altitude), fixpack, 

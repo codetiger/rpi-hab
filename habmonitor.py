@@ -16,7 +16,7 @@ client.switch_database('hab')
 
 logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', level=logging.INFO)
 
-lora = LoraModule(addressLow=0x02, dataTimer=False, delay=0.2)
+lora = LoraModule(addressLow=0x02, dataTimer=False, delay=0.25)
 
 def extractSensorData(data):
     fmt = '>ffHBHHHIBL'
@@ -76,30 +76,33 @@ logging.info('Waiting for signal:')
 try:
     while True:
         try:
-            header = lora.waitForData(3)
+            callsign = lora.waitForData(1)
 
-            high = int(header[0]) & 0xff
-            low = int(header[1]) & 0xff
-            dataid = (high << 8) | low
-            dataSize = int.from_bytes([header[2]], byteorder='big', signed=True)
-            isChunked = dataSize < 0
-            if isChunked:
-                dataSize = -dataSize
-            logging.info("DataId: %d Size: %d isChunked: %d" % (dataid, dataSize, isChunked))
+            if callsign[0] == 0xda:
+                header = lora.waitForData(3)
+                high = int(header[0]) & 0xff
+                low = int(header[1]) & 0xff
+                dataid = (high << 8) | low
+                dataSize = int.from_bytes([header[2]], byteorder='big', signed=True)
+                isChunked = dataSize < 0
+                if isChunked:
+                    dataSize = -dataSize
+                logging.info("DataId: %d Size: %d isChunked: %d" % (dataid, dataSize, isChunked))
 
-            data = lora.waitForData(dataSize)
-            if not isChunked:
-                extractSensorData(data)
-            else:
-                wirteFileData(data)
+                data = lora.waitForData(dataSize)
+                if not isChunked:
+                    extractSensorData(data)
+                else:
+                    wirteFileData(data)
 
-            packet = bytearray()
-            packet.append(0xbc)
-            packet.append(0x01)
-            packet.append(0x04)
-            packet.append(high)
-            packet.append(low)
-            lora.transmit(packet) #sending ack
+                packet = bytearray()
+                packet.append(0xbc)
+                packet.append(0x01)
+                packet.append(0x04)
+                packet.append(0xac)
+                packet.append(high)
+                packet.append(low)
+                lora.transmit(packet) #sending ack
         except Exception as e:
             logging.error("Error while parsing data - %s" % str(e))
             traceback.print_exc()

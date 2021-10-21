@@ -37,7 +37,7 @@ class GPSModule(Thread):
     def run(self):
         while self.running:
             self.readData()
-            time.sleep(0.25)
+            time.sleep(1.0)
 
     def readData(self):
         try:

@@ -25,6 +25,9 @@ class LoraModule(Thread):
     running = True
     delayAfterTransmit = 1.5
     lastTransmitTime = None
+    addressHigh = 0x0
+    addressLow = 0x0
+    port = ""
 
     def __init__(self, port="/dev/serial0", addressHigh=0xbc, addressLow=0x01, dataTimer=True, delay=1.5):
         logging.getLogger("HABControl")
@@ -35,8 +38,11 @@ class LoraModule(Thread):
         GPIO.setup(M1_PIN, GPIO.OUT)
         self.delayAfterTransmit = delay
         self.lastTransmitTime = datetime.now()
+        self.addressHigh = addressHigh
+        self.addressLow = addressLow
+        self.port = port
 
-        self.setupPort(port=port, addressHigh=addressHigh, addressLow=addressLow)
+        self.setupPort()
 
         if dataTimer:
             self.dbConn = sqlite3.connect('data.db', detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
@@ -46,20 +52,28 @@ class LoraModule(Thread):
             self.running = True
             self.start()
 
-    def setupPort(self, port, addressHigh, addressLow):
+    def setupPort(self):
         self.setMode(MODE_SLEEP)
         try:
-            self.ser = serial.Serial(port, 9600, timeout=1, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
+            self.ser = serial.Serial(self.port, 9600, timeout=1, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
         except Exception as e:
             logging.error("Could not Open Lora Port - %s" % str(e))
             self.ser = None
 
-        # packet = bytes([0xc4, 0xc4, 0xc4])
-        # logging.info("Reset Lora Module Data: %s" % (packet.hex()))
-        # self.ser.write(packet)
-        # time.sleep(0.2)
+        self.resetLoraModule(False)
+        self.ser.baudrate = 115200
 
-        packet = bytes([0xc0, addressHigh, addressLow, 0x3d, 0x04, 0xc4])
+    def resetLoraModule(self, hard=False):
+        self.setMode(MODE_SLEEP)
+        time.sleep(0.2)
+
+        if hard:
+            packet = bytes([0xc4, 0xc4, 0xc4])
+            logging.info("Reset Lora Module Data: %s" % (packet.hex()))
+            self.ser.write(packet)
+            time.sleep(0.2)
+
+        packet = bytes([0xc0, self.addressHigh, self.addressLow, 0x3d, 0x04, 0xc4])
         logging.info("Sending Config Packet Size: %d Data: %s" % (len(packet), packet.hex()))
         self.ser.write(packet)
         time.sleep(0.1)
@@ -69,7 +83,6 @@ class LoraModule(Thread):
 
         self.setMode(MODE_NORMAL)
         time.sleep(0.1)
-        self.ser.baudrate = 115200
 
     def setMode(self, mode):
         if mode == MODE_NORMAL:
@@ -94,11 +107,15 @@ class LoraModule(Thread):
             if self.ser == None:
                 break
 
-            while not GPIO.input(AUX_PIN):
-                time.sleep(0.01)
-
             duration = datetime.now() - self.lastTransmitTime
             secondsFromLastTransmit = duration.total_seconds()
+            while not GPIO.input(AUX_PIN):
+                time.sleep(0.025)
+                duration = datetime.now() - self.lastTransmitTime
+                secondsFromLastTransmit = duration.total_seconds()
+                if secondsFromLastTransmit > 25:
+                    self.resetLoraModule(True)
+            time.sleep(0.025)
 
             if self.ser.in_waiting > 0:
                 self.recieveThread()
@@ -109,10 +126,10 @@ class LoraModule(Thread):
         try:
             logging.info("Sending Packet Size: %d Data: %s" % (len(data), data.hex()))
             self.ser.write(data)
+            self.ser.flush()
             self.lastTransmitTime = datetime.now()
         except Exception as e:
             logging.error("Could not send data to Lora Port - %s" % str(e))
-            traceback.print_exc()
 
     def transmitThread(self):
         try:
@@ -132,6 +149,7 @@ class LoraModule(Thread):
                     packet.append(size) # size of data
                     packet.extend(row[1]) # data
                     self.dbConn.execute("UPDATE habdata SET lasttry = datetime('now') WHERE id = ?", [row[0]])
+                    self.dbConn.commit()
                 else:
                     break
 
@@ -139,11 +157,11 @@ class LoraModule(Thread):
                 self.transmit(packet)
         except Exception as e:
             logging.error("Could not send data to Lora - %s" % str(e))
-            traceback.print_exc()
 
     def waitForData(self, length):
         bytesToRead = self.ser.inWaiting()
         while bytesToRead < length:
+            time.sleep(0.025)
             bytesToRead = self.ser.inWaiting()
 
         data = self.ser.read(length)
@@ -159,18 +177,20 @@ class LoraModule(Thread):
                     dataid = (high << 8) | low
                     logging.info("Recieved ACK for %d" % (dataid))
                     self.dbConn.execute("UPDATE habdata SET ack = 1 WHERE id = ?", [dataid])
+                    self.dbConn.commit()
             except Exception as e:
                 logging.error("Could not update ack to SQLite - %s" % str(e))
 
     def sendData(self, data):
         CHUNK_SIZE = MAX_PACKET_SIZE - 6 # CallSign (1 byte) Dataid (2 bytes), Size (1 byte), Chunk index (1byte), Total Chunks (1 byte)
-        isChunked = len(data) > CHUNK_SIZE
-        totalChunks = int(len(data) / CHUNK_SIZE) + 1
-        if totalChunks > 255:
-            logging.error("Unable to send file, check file size")
-            return
 
         try:
+            isChunked = len(data) > CHUNK_SIZE
+            totalChunks = int(len(data) / CHUNK_SIZE) + 1
+            if totalChunks > 255:
+                logging.error("Unable to send file, check file size")
+                return
+
             if isChunked:
                 logging.debug("Data: Chunked %d, totalChunks %d" % (isChunked, totalChunks))
                 for i in range(0, totalChunks):
@@ -184,6 +204,7 @@ class LoraModule(Thread):
             else:
                 logging.debug("Data added to Queue: %s", data.hex())
                 self.dbConn.execute("INSERT INTO habdata(data, created, lasttry) VALUES (?, datetime('now'), datetime('now'));", [sqlite3.Binary(data)])
+            self.dbConn.commit()
         except Exception as e:
             logging.error("Could not insert to SQLite - %s" % str(e))
 
@@ -195,6 +216,7 @@ class LoraModule(Thread):
                 return True
             else:
                 self.dbConn.execute("DELETE FROM habdata WHERE ack = 1 and chunked = 1")
+                self.dbConn.commit()
                 return False
         except Exception as e:
             logging.error("Could not read from SQLite - %s" % str(e))
@@ -202,9 +224,9 @@ class LoraModule(Thread):
 
     def close(self):
         logging.info("Closing Lora Module object")
-        GPIO.cleanup()
         self.running = False
         self.ser.close()
         self.ser = None
         self.dbConn.close()
         self.dbConn = None
+        GPIO.cleanup()

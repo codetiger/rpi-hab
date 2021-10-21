@@ -14,12 +14,12 @@ from influxdb import InfluxDBClient
 client = InfluxDBClient(host='127.0.0.1', port=8086)
 client.switch_database('hab')
 
-logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', level=logging.INFO)
+logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', filename='habcontrol.log', level=logging.INFO)
 
 lora = LoraModule(addressLow=0x02, dataTimer=False, delay=0.25)
 
 def extractSensorData(data):
-    fmt = '>ffHBHHHIBL'
+    fmt = '>ffHBfffIBL'
     packetSize = calcsize(fmt)
     logging.debug('Packet Size: %d' % packetSize)
 

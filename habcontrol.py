@@ -10,8 +10,7 @@ from bme import *
 from lora import *
 from camera import *
 
-# logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', filename='habcontrol.log', level=logging.INFO)
-logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', level=logging.INFO)
+logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', filename='habcontrol.log', level=logging.INFO)
 logging.getLogger("HABControl")
 logging.info('Starting High Altitude Balloon Controller...')
 
@@ -24,7 +23,7 @@ rpi_disk = DiskUsage()
 rpi_load = LoadAverage()
 rpi_cpu = CPUTemperature()
 
-fmt = '>ffHBHHHIBL'
+fmt = '>ffHBfffIBL'
 logging.debug("Size of packet: %d" % calcsize(fmt))
 
 def packData():
@@ -32,7 +31,7 @@ def packData():
     fixpack = ((gps.fix_status & 0xf) << 4) | (gps.satellites & 0xf)
     output_data = (
         gps.latitude, gps.longitude, round(gps.altitude), fixpack, 
-        round(bme680.temperature), round(bme680.pressure), round(bme680.humidity), round(bme680.gas_resistance),
+        bme680.temperature, bme680.pressure, bme680.humidity, round(bme680.gas_resistance),
         round(rpi_cpu.temperature), tmstamp)
 
     logging.debug(output_data)
@@ -45,7 +44,9 @@ try:
         lora.sendData(packData())
         lora.join(5)
         if not lora.hasChunkData():
-            lora.sendData(camera.thumbnail)
+            thumbnail = camera.getThumbnailImage()
+            if thumbnail is not None:
+                lora.sendData(thumbnail)
 
 except KeyboardInterrupt:
     logging.info("Closing program")
@@ -53,3 +54,5 @@ except KeyboardInterrupt:
     lora.close()
     camera.close()
     bme680.close()
+
+logging.info('HAB Controller exits.')

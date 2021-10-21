@@ -9,7 +9,7 @@ import io
 
 class CameraModule(Thread):
     camera = None
-    thumbnail = None
+    lastSavedFile = None
 
     def __init__(self):
         logging.getLogger("HABControl")
@@ -30,7 +30,7 @@ class CameraModule(Thread):
     def run(self):
         while self.running:
             self.saveCameraImage()
-            time.sleep(1)
+            time.sleep(2)
 
     def saveCameraImage(self, folder="./images/"):
         try:
@@ -38,17 +38,23 @@ class CameraModule(Thread):
             self.camera.annotate_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.camera.annotate_text_size = 48
 
-            filename = folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg"
-            self.camera.capture(filename)
+            self.lastSavedFile = folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg"
+            self.camera.capture(self.lastSavedFile)
+        except Exception as e:
+            logging.error("Unable to read Camera - %s" % str(e))
 
-            thbnl = Image.open(filename)
+    def getThumbnailImage(self):
+        if self.lastSavedFile == None:
+            return None
+
+        try:
+            thbnl = Image.open(self.lastSavedFile)
             thbnl.thumbnail((384,216))
             imgByteArr = io.BytesIO()
             thbnl.save(imgByteArr, format="jpeg", quality=75)
-            self.thumbnail = imgByteArr.getvalue()
-            # logging.info("Compressed Image Size: %d" % (len(self.thumbnail)))
+            return imgByteArr.getvalue()
         except Exception as e:
-            logging.error("Unable to read Camera - %s" % str(e))
+            logging.error("Error creating thumbnail image - %s" % str(e))
 
     def close(self):
         self.running = False

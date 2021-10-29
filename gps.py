@@ -49,17 +49,9 @@ class GPSModule(Thread):
                 self.fix_status = msg.gpsFix
             elif msg.name() == "NAV_POSLLH":
                 msg.unpack()
-                if self.fix_status >= 2:
-                    self.latitude = msg.Latitude * 1e-7
-                    self.longitude = msg.Longitude * 1e-7
-                else:
-                    self.latitude = 0
-                    self.longitude = 0
-
-                if self.fix_status >= 3:
-                    self.altitude = msg.hMSL / 1000.0
-                else:
-                    self.altitude = 0.0
+                self.latitude = msg.Latitude * 1e-7
+                self.longitude = msg.Longitude * 1e-7
+                self.altitude = msg.hMSL / 1000.0
 
                 if self.altitude < 0.0:
                     self.altitude = 0.0

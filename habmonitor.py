@@ -7,6 +7,7 @@ from pathlib import Path
 from struct import *
 from lora import *
 import shutil
+import RPi.GPIO as GPIO
 
 from datetime import datetime
 from influxdb import InfluxDBClient
@@ -14,8 +15,11 @@ from influxdb import InfluxDBClient
 client = InfluxDBClient(host='127.0.0.1', port=8086)
 client.switch_database('hab')
 
-logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', filename='habcontrol.log', level=logging.INFO)
+logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', filename='habmonitor.log', level=logging.INFO)
 
+BUZZER_PIN = 12
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(BUZZER_PIN, GPIO.OUT)
 lora = LoraModule(addressLow=0x02, dataTimer=False, delay=0.25)
 
 def extractSensorData(data):
@@ -38,13 +42,22 @@ def extractSensorData(data):
         "measurement": "payloaddata",
         "time": tmstamp,
         "fields": {
-            "latitude": gps_latitude, "longitude": gps_longitude, "altitude": gps_altitude, "fixstatus": gps_fix_status, "satellites": gps_satellites,
+            "fixstatus": gps_fix_status, "satellites": gps_satellites,
             "temperature": env_temperature, "pressure": env_pressure, "humidity": env_humidity, "gasresistance": env_gas_resistance,
             "rpicputemperature": rpi_cpu_temperature,
         }
     }]
+    if gps_fix_status > 2:
+        json_body[0]["fields"]["altitude"] = gps_altitude
+    if gps_fix_status >= 2:
+        json_body[0]["fields"]["latitude"] = gps_latitude
+        json_body[0]["fields"]["longitude"] = gps_longitude
+
     res = client.write_points(json_body, time_precision='s')
     logging.debug("Write to Influx: %d" %(res))
+    GPIO.output(BUZZER_PIN, GPIO.HIGH)
+    time.sleep(0.02)
+    GPIO.output(BUZZER_PIN, GPIO.LOW)
 
 def updateChunkData(fileData):
     filep = open('filechunks', 'wb')
@@ -65,11 +78,21 @@ def wirteFileData(data):
     logging.debug("File chunk index: %d / %d" % (data[0], data[1]))
     if len(fileData) == data[1]:
         file = open('images/latest.jpg', 'wb')
-        for i in range(0, len(fileData)):
-            file.write(fileData[i])
-        file.close()
-        shutil.copyfile('images/latest.jpg', 'images/hab-' + time.strftime("%d-%H%M%S") + ".jpg")
+        try:
+            for i in range(0, len(fileData)):
+                file.write(fileData[i])
+            shutil.copyfile('images/latest.jpg', 'images/hab-' + time.strftime("%d-%H%M%S") + ".jpg")
+        except Exception as e:
+            logging.error("Error creating image data - %s" % str(e))
         fileData = {}
+        file.close()
+        GPIO.output(BUZZER_PIN, GPIO.HIGH)
+        time.sleep(0.2)
+        GPIO.output(BUZZER_PIN, GPIO.LOW)
+        time.sleep(0.2)
+        GPIO.output(BUZZER_PIN, GPIO.HIGH)
+        time.sleep(0.2)
+        GPIO.output(BUZZER_PIN, GPIO.LOW)
     updateChunkData(fileData)
 
 logging.info('Waiting for signal:')

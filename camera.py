@@ -19,13 +19,14 @@ class CameraModule(Thread):
             self.camera.resolution = (1920, 1080)
             self.camera.meter_mode = 'matrix'
             self.camera.start_preview()
+    
+            Thread.__init__(self)
+            self.running = True
+            self.start()
         except Exception as e:
+            self.running = False
             logging.error("Could not Open Camera - %s" % str(e))
             self.camera = None
-
-        Thread.__init__(self)
-        self.running = True
-        self.start()
 
     def run(self):
         while self.running:
@@ -44,7 +45,7 @@ class CameraModule(Thread):
             logging.error("Unable to read Camera - %s" % str(e))
 
     def getThumbnailImage(self):
-        if self.lastSavedFile == None:
+        if self.lastSavedFile == None or self.camera == None:
             return None
 
         try:

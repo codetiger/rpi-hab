@@ -79,13 +79,16 @@ updateChunkData({})
 
 def wirteFileData(data):
     fileData = readChunkData()
-    fileData[data[0]] = data[2:]
-    logging.debug("File chunk index: %d / %d" % (data[0], data[1]))
-    if len(fileData) == data[1]:
+    index = int.from_bytes(data[0:2], byteorder='big', signed=False)
+    totalChunks = int.from_bytes(data[2:4], byteorder='big', signed=False)
+    fileData[index] = data[4:]
+    logging.debug("File chunk index: %d / %d" % (index, totalChunks))
+    if len(fileData) == totalChunks:
         file = open('images/latest.jpg', 'wb')
         try:
             for i in range(0, len(fileData)):
                 file.write(fileData[i])
+            file.flush()
             shutil.copyfile('images/latest.jpg', 'images/hab-' + time.strftime("%d-%H%M%S") + ".jpg")
         except Exception as e:
             logging.error("Error creating image data - %s" % str(e))

@@ -38,7 +38,7 @@ class CameraModule(Thread):
         try:
             self.camera.annotate_background = Color('black')
             self.camera.annotate_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            self.camera.annotate_text_size = 48
+            self.camera.annotate_text_size = 32
 
             self.lastSavedFile = folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg"
             self.camera.capture(self.lastSavedFile)
@@ -52,7 +52,7 @@ class CameraModule(Thread):
 
         try:
             thbnl = Image.open(self.lastSavedFile)
-            thbnl.thumbnail((384,216))
+            thbnl.thumbnail((640,360))
             imgByteArr = io.BytesIO()
             thbnl.save(imgByteArr, format="jpeg", quality=75)
             return imgByteArr.getvalue()

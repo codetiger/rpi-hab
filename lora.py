@@ -190,12 +190,12 @@ class LoraModule(Thread):
                 logging.error("Could not update ack to SQLite - %s" % str(e))
 
     def sendData(self, data):
-        CHUNK_SIZE = MAX_PACKET_SIZE - 6 # CallSign (1 byte) Dataid (2 bytes), Size (1 byte), Chunk index (1byte), Total Chunks (1 byte)
+        CHUNK_SIZE = MAX_PACKET_SIZE - 8 # CallSign (1 byte) Dataid (2 bytes), Size (1 byte), Chunk index (2 byte), Total Chunks (2 byte)
 
         try:
             isChunked = len(data) > CHUNK_SIZE
             totalChunks = int(len(data) / CHUNK_SIZE) + 1
-            if totalChunks > 255:
+            if totalChunks > 255 * 255:
                 logging.error("Unable to send file, check file size")
                 return
 
@@ -204,8 +204,12 @@ class LoraModule(Thread):
                 for i in range(0, totalChunks):
                     dt = data[i*CHUNK_SIZE:(i+1)*CHUNK_SIZE]
                     packet = bytearray()
-                    packet.append(i.to_bytes(1, byteorder='big', signed=False)[0])
-                    packet.append(totalChunks.to_bytes(1, byteorder='big', signed=False)[0])
+                    indexBytes = i.to_bytes(2, byteorder='big', signed=False)
+                    packet.append(indexBytes[0])
+                    packet.append(indexBytes[1])
+                    totalChunksBytes = totalChunks.to_bytes(2, byteorder='big', signed=False)
+                    packet.append(totalChunksBytes[0])
+                    packet.append(totalChunksBytes[1])
                     packet.extend(dt)
                     logging.debug("Data added to Queue: %s", packet.hex())
                     self.dbConn.execute("INSERT INTO habdata(data, chunked, created, lasttry) VALUES (?, 1, datetime('now'), datetime('now'));", [sqlite3.Binary(packet)])

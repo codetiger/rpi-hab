@@ -22,12 +22,12 @@ MAX_PACKET_SIZE = 58
 class LoraModule(Thread):
     ser = None
     dbConn = None
-    running = True
     delayAfterTransmit = 1.5
     lastTransmitTime = None
     addressHigh = 0x0
     addressLow = 0x0
     port = ""
+    healthy = True
 
     def __init__(self, port="/dev/serial0", addressHigh=0xbc, addressLow=0x01, dataTimer=True, delay=1.5):
         logging.getLogger("HABControl")
@@ -49,7 +49,7 @@ class LoraModule(Thread):
             self.dbConn.execute("CREATE TABLE IF NOT EXISTS habdata(id INTEGER PRIMARY KEY, data BLOB NOT NULL, chunked INT DEFAULT 0 NOT NULL, created timestamp NOT NULL, ack INT DEFAULT 0 NOT NULL, lasttry timestamp NOT NULL);")
 
             Thread.__init__(self)
-            self.running = True
+            self.healthy = True
             self.start()
 
     def setupPort(self):
@@ -78,7 +78,10 @@ class LoraModule(Thread):
         self.ser.write(packet)
         time.sleep(0.1)
         res = self.waitForData(6)
-        logging.info("Config confirmation: %s" % (res.hex()))
+        if res is not None:
+            logging.info("Config confirmation: %s" % (res.hex()))
+        else:
+            logging.info("Config confirmation timeout")
         time.sleep(0.1)
 
         self.setMode(MODE_NORMAL)
@@ -103,7 +106,7 @@ class LoraModule(Thread):
             GPIO.output(M1_PIN, GPIO.HIGH)
 
     def run(self):
-        while self.running:
+        while self.healthy:
             if self.ser == None:
                 break
 
@@ -114,7 +117,7 @@ class LoraModule(Thread):
                 duration = datetime.now() - self.lastTransmitTime
                 secondsFromLastTransmit = duration.total_seconds()
                 if secondsFromLastTransmit > 25:
-                    self.resetLoraModule(True)
+                    self.healthy = False
             time.sleep(0.025)
 
             if self.ser.in_waiting > 0:
@@ -130,6 +133,7 @@ class LoraModule(Thread):
             self.lastTransmitTime = datetime.now()
         except Exception as e:
             logging.error("Could not send data to Lora Port - %s" % str(e))
+            self.healthy = False
 
     def transmitThread(self):
         try:
@@ -157,12 +161,16 @@ class LoraModule(Thread):
                 self.transmit(packet)
         except Exception as e:
             logging.error("Could not send data to Lora - %s" % str(e))
+            self.healthy = False
 
-    def waitForData(self, length):
-        bytesToRead = self.ser.inWaiting()
-        while bytesToRead < length:
+    def waitForData(self, length, timeout=10):
+        callTime = datetime.now()
+        while self.ser.in_waiting < length:
             time.sleep(0.025)
-            bytesToRead = self.ser.inWaiting()
+            duration = datetime.now() - callTime
+            secondsFromCallTime = duration.total_seconds()
+            if secondsFromCallTime > timeout:
+                return None
 
         data = self.ser.read(length)
         return data
@@ -224,7 +232,7 @@ class LoraModule(Thread):
 
     def close(self):
         logging.info("Closing Lora Module object")
-        self.running = False
+        self.healthy = False
         self.ser.close()
         self.ser = None
         self.dbConn.close()

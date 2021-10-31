@@ -10,6 +10,7 @@ class BME680Module(Thread):
     pressure = 0.0
     humidity = 0.0
     gas_resistance = 0.0
+    healthy = True
 
     def __init__(self):
         logging.getLogger("HABControl")
@@ -25,16 +26,17 @@ class BME680Module(Thread):
             self.sensor.set_gas_heater_temperature(320)
             self.sensor.set_gas_heater_duration(150)
             self.sensor.select_gas_heater_profile(0)
+
+            Thread.__init__(self)
+            self.healthy = True
+            self.start()
         except Exception as e:
             logging.error('Unable to initialise BME680 Sensor: %s' % str(e))
+            self.healthy = False
             self.sensor = None
 
-        Thread.__init__(self)
-        self.running = True
-        self.start()
-
     def run(self):
-        while self.running:
+        while self.healthy:
             self.readData()
             time.sleep(2.0)
 
@@ -49,10 +51,11 @@ class BME680Module(Thread):
                     self.gas_resistance = self.sensor.data.gas_resistance
         except Exception as e:
             logging.error("Unable to read from BME680 sensor - %s" % str(e))
+            self.healthy = False
             self.temperature = 0.0
             self.pressure = 0.0
             self.humidity = 0.0
             self.gas_resistance = 0.0
 
     def close(self):
-        self.running = False
+        self.healthy = False

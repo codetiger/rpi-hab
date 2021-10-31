@@ -10,6 +10,7 @@ import io
 class CameraModule(Thread):
     camera = None
     lastSavedFile = None
+    healthy = True
 
     def __init__(self):
         logging.getLogger("HABControl")
@@ -21,15 +22,15 @@ class CameraModule(Thread):
             self.camera.start_preview()
     
             Thread.__init__(self)
-            self.running = True
+            self.healthy = True
             self.start()
         except Exception as e:
-            self.running = False
+            self.healthy = False
             logging.error("Could not Open Camera - %s" % str(e))
             self.camera = None
 
     def run(self):
-        while self.running:
+        while self.healthy:
             self.saveCameraImage()
             time.sleep(2)
 
@@ -43,6 +44,7 @@ class CameraModule(Thread):
             self.camera.capture(self.lastSavedFile)
         except Exception as e:
             logging.error("Unable to read Camera - %s" % str(e))
+            self.healthy = False
 
     def getThumbnailImage(self):
         if self.lastSavedFile == None or self.camera == None:
@@ -58,6 +60,6 @@ class CameraModule(Thread):
             logging.error("Error creating thumbnail image - %s" % str(e))
 
     def close(self):
-        self.running = False
+        self.healthy = False
         self.camera.stop_preview()
         self.camera.close()

@@ -40,7 +40,7 @@ def packData():
 
 logging.info('Polling:')
 try:
-    while lora.isAlive():
+    while lora.healthy:
         lora.sendData(packData())
         lora.join(5)
         if not lora.hasChunkData():

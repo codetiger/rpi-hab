@@ -43,10 +43,15 @@ def extractSensorData(data):
         "time": tmstamp,
         "fields": {
             "fixstatus": gps_fix_status, "satellites": gps_satellites,
-            "temperature": env_temperature, "pressure": env_pressure, "humidity": env_humidity, "gasresistance": env_gas_resistance,
             "rpicputemperature": rpi_cpu_temperature,
         }
     }]
+    if not (env_temperature == 0 and env_pressure == 0 and env_humidity == 0):
+        json_body[0]["fields"]["temperature"] = env_temperature
+        json_body[0]["fields"]["pressure"] = env_pressure
+        json_body[0]["fields"]["humidity"] = env_humidity
+        json_body[0]["fields"]["gasresistance"] = env_gas_resistance
+
     if gps_fix_status > 2:
         json_body[0]["fields"]["altitude"] = gps_altitude
     if gps_fix_status >= 2:

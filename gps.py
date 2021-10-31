@@ -11,6 +11,7 @@ class GPSModule(Thread):
     altitude = 0.0
     fix_status = 0
     satellites = 0
+    healthy = True
 
     def __init__(self, portname="/dev/ttyUSB0", timeout=2, baudrate=9600):
         logging.getLogger("HABControl")
@@ -26,16 +27,17 @@ class GPSModule(Thread):
 
             self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_POSLLH, 1)
             self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_SOL, 1)
+
+            Thread.__init__(self)
+            self.healthy = True
+            self.start()
         except Exception as e:
             logging.error('Unable to initialise GPS: %s' % str(e))
             self.gps = None
-        
-        Thread.__init__(self)
-        self.running = True
-        self.start()
+            self.healthy = False
 
     def run(self):
-        while self.running:
+        while self.healthy:
             self.readData()
             time.sleep(1.0)
 
@@ -57,10 +59,11 @@ class GPSModule(Thread):
                     self.altitude = 0.0
         except Exception as e:
             logging.error("Unable to read from GPS Chip - %s" % str(e))
+            self.healthy = False
 
     def close(self):
         logging.info("Closing GPS Module object")
-        self.running = False
+        self.healthy = False
         self.gps.close()
         self.gps = None
 

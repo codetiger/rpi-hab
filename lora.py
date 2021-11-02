@@ -153,7 +153,6 @@ class LoraModule(Thread):
                     packet.append(size) # size of data
                     packet.extend(row[1]) # data
                     self.dbConn.execute("UPDATE habdata SET lasttry = datetime('now') WHERE id = ?", [row[0]])
-                    self.dbConn.commit()
                 else:
                     break
 
@@ -185,7 +184,6 @@ class LoraModule(Thread):
                     dataid = (high << 8) | low
                     logging.info("Recieved ACK for %d" % (dataid))
                     self.dbConn.execute("UPDATE habdata SET ack = 1 WHERE id = ?", [dataid])
-                    self.dbConn.commit()
             except Exception as e:
                 logging.error("Could not update ack to SQLite - %s" % str(e))
 
@@ -216,7 +214,6 @@ class LoraModule(Thread):
             else:
                 logging.debug("Data added to Queue: %s", data.hex())
                 self.dbConn.execute("INSERT INTO habdata(data, created, lasttry) VALUES (?, datetime('now'), datetime('now'));", [sqlite3.Binary(data)])
-            self.dbConn.commit()
         except Exception as e:
             logging.error("Could not insert to SQLite - %s" % str(e))
 
@@ -228,7 +225,6 @@ class LoraModule(Thread):
                 return True
             else:
                 self.dbConn.execute("DELETE FROM habdata WHERE ack = 1 and chunked = 1")
-                self.dbConn.commit()
                 return False
         except Exception as e:
             logging.error("Could not read from SQLite - %s" % str(e))

@@ -10,7 +10,7 @@ from bme import *
 from lora import *
 from camera import *
 
-logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', filename='habcontrol.log', level=logging.INFO)
+logging.basicConfig(format='[%(levelname)s]:[%(asctime)s]:%(message)s', filename='habcontrol.log', level=logging.ERROR)
 logging.getLogger("HABControl")
 logging.info('Starting High Altitude Balloon Controller...')
 
@@ -50,9 +50,10 @@ try:
 
 except KeyboardInterrupt:
     logging.info("Closing program")
-    gps.close()
-    lora.close()
-    camera.close()
-    bme680.close()
 
+gps.close()
+lora.close()
+camera.close()
+bme680.close()
 logging.info('HAB Controller exits.')
+exit(0)

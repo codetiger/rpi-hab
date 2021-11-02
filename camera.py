@@ -40,8 +40,9 @@ class CameraModule(Thread):
             self.camera.annotate_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.camera.annotate_text_size = 32
 
-            self.lastSavedFile = folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg"
-            self.camera.capture(self.lastSavedFile)
+            filePath = folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg"
+            self.camera.capture(filePath)
+            self.lastSavedFile = filePath
         except Exception as e:
             logging.error("Unable to read Camera - %s" % str(e))
             self.healthy = False

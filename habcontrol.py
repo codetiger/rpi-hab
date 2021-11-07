@@ -40,7 +40,7 @@ def packData():
 
 logging.info('Polling:')
 try:
-    while lora.healthy:
+    while lora.healthy and gps.healthy and camera.healthy and bme680.healthy:
         lora.sendData(packData())
         lora.join(5)
         if not lora.hasChunkData():
@@ -56,4 +56,4 @@ lora.close()
 camera.close()
 bme680.close()
 logging.info('HAB Controller exits.')
-exit(0)
+exit(1)

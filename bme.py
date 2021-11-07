@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-import bme680
-import time, logging
+import bme680, time, logging
 from threading import Thread
 
 class BME680Module(Thread):
@@ -31,7 +30,7 @@ class BME680Module(Thread):
             self.healthy = True
             self.start()
         except Exception as e:
-            logging.error('Unable to initialise BME680 Sensor: %s' % str(e))
+            logging.error('Unable to initialise BME680 Sensor: %s' % str(e), exc_info=True)
             self.healthy = False
             self.sensor = None
 
@@ -50,7 +49,7 @@ class BME680Module(Thread):
                 if self.sensor.data.heat_stable:
                     self.gas_resistance = self.sensor.data.gas_resistance
         except Exception as e:
-            logging.error("Unable to read from BME680 sensor - %s" % str(e))
+            logging.error("Unable to read from BME680 sensor - %s" % str(e), exc_info=True)
             self.healthy = False
             self.temperature = 0.0
             self.pressure = 0.0

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-import time, logging
+import time, logging, io
 from datetime import datetime
 from picamera import PiCamera, Color
 from threading import Thread
 from PIL import Image
-import io
 
 class CameraModule(Thread):
     camera = None
@@ -26,7 +25,7 @@ class CameraModule(Thread):
             self.start()
         except Exception as e:
             self.healthy = False
-            logging.error("Could not Open Camera - %s" % str(e))
+            logging.error("Could not Open Camera - %s" % str(e), exc_info=True)
             self.camera = None
 
     def run(self):
@@ -44,7 +43,7 @@ class CameraModule(Thread):
             self.camera.capture(filePath)
             self.lastSavedFile = filePath
         except Exception as e:
-            logging.error("Unable to read Camera - %s" % str(e))
+            logging.error("Unable to read Camera - %s" % str(e), exc_info=True)
             self.healthy = False
 
     def getThumbnailImage(self):
@@ -58,7 +57,7 @@ class CameraModule(Thread):
             thbnl.save(imgByteArr, format="jpeg", quality=75)
             return imgByteArr.getvalue()
         except Exception as e:
-            logging.error("Error creating thumbnail image - %s" % str(e))
+            logging.error("Error creating thumbnail image - %s" % str(e), exc_info=True)
 
     def close(self):
         self.healthy = False

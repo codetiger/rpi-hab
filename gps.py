@@ -32,7 +32,7 @@ class GPSModule(Thread):
             self.healthy = True
             self.start()
         except Exception as e:
-            logging.error('Unable to initialise GPS: %s' % str(e))
+            logging.error('Unable to initialise GPS: %s' % str(e), exc_info=True)
             self.gps = None
             self.healthy = False
 
@@ -44,21 +44,23 @@ class GPSModule(Thread):
     def readData(self):
         try:
             msg = self.gps.receive_message()
-            logging.debug(msg)
-            if msg.name() == "NAV_SOL":
-                msg.unpack()
-                self.satellites = msg.numSV
-                self.fix_status = msg.gpsFix
-            elif msg.name() == "NAV_POSLLH":
-                msg.unpack()
-                self.latitude = msg.Latitude * 1e-7
-                self.longitude = msg.Longitude * 1e-7
-                self.altitude = msg.hMSL / 1000.0
+    
+            if msg is not None:
+                logging.debug(msg)
+                if msg.name() == "NAV_SOL":
+                    msg.unpack()
+                    self.satellites = msg.numSV
+                    self.fix_status = msg.gpsFix
+                elif msg.name() == "NAV_POSLLH":
+                    msg.unpack()
+                    self.latitude = msg.Latitude * 1e-7
+                    self.longitude = msg.Longitude * 1e-7
+                    self.altitude = msg.hMSL / 1000.0
 
-                if self.altitude < 0.0:
-                    self.altitude = 0.0
+                    if self.altitude < 0.0:
+                        self.altitude = 0.0
         except Exception as e:
-            logging.error("Unable to read from GPS Chip - %s" % str(e))
+            logging.error("Unable to read from GPS Chip - %s" % str(e), exc_info=True)
             self.healthy = False
 
     def close(self):

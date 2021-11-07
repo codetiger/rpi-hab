@@ -132,7 +132,7 @@ class LoraModule(Thread):
             self.ser.flush()
             self.lastTransmitTime = datetime.now()
         except Exception as e:
-            logging.error("Could not send data to Lora Port - %s" % str(e))
+            logging.error("Could not send data to Lora Port - %s" % str(e), exc_info=True)
             self.healthy = False
 
     def transmitThread(self):
@@ -159,7 +159,7 @@ class LoraModule(Thread):
             if len(packet) > 3:
                 self.transmit(packet)
         except Exception as e:
-            logging.error("Could not send data to Lora - %s" % str(e))
+            logging.error("Could not send data to Lora - %s" % str(e), exc_info=True)
             self.healthy = False
 
     def waitForData(self, length, timeout=10):
@@ -185,7 +185,7 @@ class LoraModule(Thread):
                     logging.info("Recieved ACK for %d" % (dataid))
                     self.dbConn.execute("UPDATE habdata SET ack = 1 WHERE id = ?", [dataid])
             except Exception as e:
-                logging.error("Could not update ack to SQLite - %s" % str(e))
+                logging.error("Could not update ack to SQLite - %s" % str(e), exc_info=True)
 
     def sendData(self, data):
         CHUNK_SIZE = MAX_PACKET_SIZE - 8 # CallSign (1 byte) Dataid (2 bytes), Size (1 byte), Chunk index (2 byte), Total Chunks (2 byte)
@@ -215,7 +215,7 @@ class LoraModule(Thread):
                 logging.debug("Data added to Queue: %s", data.hex())
                 self.dbConn.execute("INSERT INTO habdata(data, created, lasttry) VALUES (?, datetime('now'), datetime('now'));", [sqlite3.Binary(data)])
         except Exception as e:
-            logging.error("Could not insert to SQLite - %s" % str(e))
+            logging.error("Could not insert to SQLite - %s" % str(e), exc_info=True)
 
     def hasChunkData(self):
         try:
@@ -227,7 +227,7 @@ class LoraModule(Thread):
                 self.dbConn.execute("DELETE FROM habdata WHERE ack = 1 and chunked = 1")
                 return False
         except Exception as e:
-            logging.error("Could not read from SQLite - %s" % str(e))
+            logging.error("Could not read from SQLite - %s" % str(e), exc_info=True)
             return False
 
     def close(self):

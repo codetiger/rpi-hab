@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-import time, io, os, logging
-import serial
-import pickle, traceback
+import time, io, os, logging, serial, pickle
 from pathlib import Path
 from struct import *
 from lora import *
@@ -135,8 +133,7 @@ try:
                     packet.append(low)
                     lora.transmit(packet) #sending ack
                 except Exception as e:
-                    logging.error("Error while parsing data - %s" % str(e))
-                    traceback.print_exc()
+                    logging.error("Error while parsing data - %s" % str(e), exc_info=True)
 
 except KeyboardInterrupt:
     lora.close()

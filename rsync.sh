@@ -1,1 +1,0 @@
-scp pi@192.168.0.107:/home/pi/hab/images/*.jpg images/

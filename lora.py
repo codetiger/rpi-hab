@@ -107,9 +107,6 @@ class LoraModule(Thread):
 
     def run(self):
         while self.healthy:
-            if self.ser == None:
-                break
-
             duration = datetime.now() - self.lastTransmitTime
             secondsFromLastTransmit = duration.total_seconds()
             while not GPIO.input(AUX_PIN):
@@ -120,10 +117,14 @@ class LoraModule(Thread):
                     self.healthy = False
             time.sleep(0.025)
 
-            if self.ser.in_waiting > 0:
-                self.recieveThread()
-            elif secondsFromLastTransmit > self.delayAfterTransmit:
-                self.transmitThread()
+            try:
+                if self.ser.in_waiting > 0:
+                    self.recieveThread()
+                elif secondsFromLastTransmit > self.delayAfterTransmit:
+                    self.transmitThread()
+            except Exception as e:
+                logging.error("Error in Lora module - %s" % str(e), exc_info=True)
+                self.healthy = False
 
     def transmit(self, data):
         try:

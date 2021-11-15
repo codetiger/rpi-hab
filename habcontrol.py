@@ -23,15 +23,15 @@ rpi_disk = DiskUsage()
 rpi_load = LoadAverage()
 rpi_cpu = CPUTemperature()
 
-fmt = '>ffHBfffIBL'
+fmt = '>fffBfffHBL'
 logging.debug("Size of packet: %d" % calcsize(fmt))
 
 def packData():
     tmstamp = int(datetime.utcnow().timestamp())
     fixpack = ((gps.fix_status & 0xf) << 4) | (gps.satellites & 0xf)
     output_data = (
-        gps.latitude, gps.longitude, round(gps.altitude), fixpack, 
-        bme680.temperature, bme680.pressure, bme680.humidity, round(bme680.gas_resistance),
+        gps.latitude, gps.longitude, gps.altitude, fixpack, 
+        bme680.temperature, bme680.pressure, bme680.humidity, round(bme680.airQuality),
         round(rpi_cpu.temperature), tmstamp)
 
     logging.debug(output_data)
@@ -47,9 +47,10 @@ try:
             thumbnail = camera.getThumbnailImage()
             if thumbnail is not None:
                 lora.sendData(thumbnail)
-
 except KeyboardInterrupt:
     logging.info("Closing program")
+except Exception as e:
+    logging.error("Error in controller - %s" % str(e), exc_info=True)
 
 gps.close()
 lora.close()

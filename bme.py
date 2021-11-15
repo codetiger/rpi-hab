@@ -8,8 +8,13 @@ class BME680Module(Thread):
     temperature = 0.0
     pressure = 0.0
     humidity = 0.0
-    gas_resistance = 0.0
+    airQuality = 0
     healthy = True
+    burnInStartTime = time.time()
+    burnInDuration = 300
+    burnInData = []
+    gasBaseline = 0
+    isBurnInProgress = True
 
     def __init__(self):
         logging.getLogger("HABControl")
@@ -37,24 +42,57 @@ class BME680Module(Thread):
     def run(self):
         while self.healthy:
             self.readData()
-            time.sleep(2.0)
+            time.sleep(1.0)
 
     def readData(self):
+        hum_baseline = 40.0
+        hum_weighting = 0.25
         try:
             if self.sensor.get_sensor_data():
                 self.temperature = self.sensor.data.temperature
                 self.pressure = self.sensor.data.pressure
                 self.humidity = self.sensor.data.humidity
 
-                if self.sensor.data.heat_stable:
-                    self.gas_resistance = self.sensor.data.gas_resistance
+                if self.isBurnInProgress:
+                    if time.time() - self.burnInStartTime < self.burnInDuration:
+                        if self.sensor.data.heat_stable:
+                            self.burnInData.append(self.sensor.data.gas_resistance)
+                    else:
+                        self.isBurnInProgress = False
+                        self.gasBaseline = sum(self.burnInData[-50:]) / 50.0
+                elif self.sensor.data.heat_stable:
+                    gas = self.sensor.data.gas_resistance
+                    gas_offset = self.gasBaseline - gas
+
+                    hum = self.sensor.data.humidity
+                    hum_offset = hum - hum_baseline
+
+                    # Calculate hum_score as the distance from the hum_baseline.
+                    if hum_offset > 0:
+                        hum_score = (100 - hum_baseline - hum_offset)
+                        hum_score /= (100 - hum_baseline)
+                    else:
+                        hum_score = (hum_baseline + hum_offset)
+                        hum_score /= hum_baseline
+                    hum_score *= (hum_weighting * 100)
+
+                    # Calculate gas_score as the distance from the gas_baseline.
+                    if gas_offset > 0:
+                        gas_score = (gas / self.gasBaseline)
+                        gas_score *= (100 - (hum_weighting * 100))
+                    else:
+                        gas_score = 100 - (hum_weighting * 100)
+
+                    # Calculate air_quality_score.
+                    self.airQuality = hum_score + gas_score
+
         except Exception as e:
             logging.error("Unable to read from BME680 sensor - %s" % str(e), exc_info=True)
             self.healthy = False
             self.temperature = 0.0
             self.pressure = 0.0
             self.humidity = 0.0
-            self.gas_resistance = 0.0
+            self.airQuality = 0.0
 
     def close(self):
         self.healthy = False

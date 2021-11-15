@@ -21,19 +21,19 @@ GPIO.setup(BUZZER_PIN, GPIO.OUT)
 lora = LoraModule(addressLow=0x02, dataTimer=False, delay=0.25)
 
 def extractSensorData(data):
-    fmt = '>ffHBfffIBL'
+    fmt = '>fffBfffHBL'
     packetSize = calcsize(fmt)
     logging.debug('Packet Size: %d' % packetSize)
 
     (gps_latitude, gps_longitude, gps_altitude, fixpack, 
-        env_temperature, env_pressure, env_humidity, env_gas_resistance,
+        env_temperature, env_pressure, env_humidity, env_air_quality,
         rpi_cpu_temperature, tmstamp) = unpack(fmt, data)
     gps_fix_status = (fixpack >> 4) & 0xf
     gps_satellites = fixpack & 0xf
 
     tmstamp = datetime.fromtimestamp(tmstamp)
     logging.debug((gps_latitude, gps_longitude, gps_altitude, gps_fix_status, gps_satellites, 
-        env_temperature, env_pressure, env_humidity, env_gas_resistance,
+        env_temperature, env_pressure, env_humidity, env_air_quality,
         rpi_cpu_temperature, tmstamp))
 
     json_body = [{
@@ -48,7 +48,9 @@ def extractSensorData(data):
         json_body[0]["fields"]["temperature"] = env_temperature
         json_body[0]["fields"]["pressure"] = env_pressure
         json_body[0]["fields"]["humidity"] = env_humidity
-        json_body[0]["fields"]["gasresistance"] = env_gas_resistance
+
+    if env_air_quality is not 0:
+        json_body[0]["fields"]["airquality"] = env_air_quality
 
     if gps_fix_status > 2:
         json_body[0]["fields"]["altitude"] = gps_altitude

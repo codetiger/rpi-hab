@@ -36,7 +36,7 @@ class CameraModule(Thread):
     def saveCameraImage(self, folder="./images/"):
         try:
             self.camera.annotate_background = Color('black')
-            self.camera.annotate_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.camera.annotate_text = "RaliSat-1 : " + datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.camera.annotate_text_size = 32
 
             filePath = folder + "hab-" + time.strftime("%d-%H%M%S") + ".jpg"

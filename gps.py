@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import logging
+import logging, math
 from ublox import *
 from threading import Thread
 
@@ -12,6 +12,7 @@ class GPSModule(Thread):
     fix_status = 0
     satellites = 0
     healthy = True
+    onHighAltitude = False
 
     def __init__(self, portname="/dev/ttyUSB0", timeout=2, baudrate=9600):
         logging.getLogger("HABControl")
@@ -19,12 +20,9 @@ class GPSModule(Thread):
         try:
             self.gps = UBlox(port=portname, timeout=timeout, baudrate=baudrate)
             self.gps.set_binary()
-
             self.gps.configure_poll_port()
             self.gps.configure_solution_rate(rate_ms=1000)
-
-            self.gps.set_preferred_dynamic_model(DYNAMIC_MODEL_PORTABLE)
-
+            self.gps.set_preferred_dynamic_model(DYNAMIC_MODEL_PEDESTRIAN)
             self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_POSLLH, 1)
             self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_SOL, 1)
 
@@ -40,6 +38,21 @@ class GPSModule(Thread):
         while self.healthy:
             self.readData()
             time.sleep(1.0)
+
+    def checkPressure(self, pressure):
+        alt = 0.0
+        if pressure is not 0:
+            alt = 44330.0 * (1.0 - math.pow(pressure / 1013.25, 0.1903))
+        self.checkAltitude(alt)
+
+    def checkAltitude(self, altitude):
+        if altitude is not 0:
+            if altitude > 9000 and not self.onHighAltitude:
+                self.onHighAltitude = True
+                self.gps.set_preferred_dynamic_model(DYNAMIC_MODEL_AIRBORNE1G)
+            if self.onHighAltitude and altitude < 8000:
+                self.onHighAltitude = False
+                self.gps.set_preferred_dynamic_model(DYNAMIC_MODEL_PEDESTRIAN)
 
     def readData(self):
         try:

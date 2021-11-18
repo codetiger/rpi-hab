@@ -52,8 +52,9 @@ def extractSensorData(data):
     if env_air_quality is not 0:
         json_body[0]["fields"]["airquality"] = env_air_quality
 
-    if gps_fix_status > 2:
+    if gps_fix_status > 2 and gps_altitude is not 0:
         json_body[0]["fields"]["altitude"] = gps_altitude
+
     if gps_fix_status >= 2:
         json_body[0]["fields"]["latitude"] = gps_latitude
         json_body[0]["fields"]["longitude"] = gps_longitude

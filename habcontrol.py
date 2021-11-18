@@ -41,6 +41,8 @@ def packData():
 logging.info('Polling:')
 try:
     while lora.healthy and gps.healthy and camera.healthy and bme680.healthy:
+        gps.checkAltitude(gps.altitude)
+        gps.checkPressure(bme680.pressure)
         lora.sendData(packData())
         lora.join(5)
         if not lora.hasChunkData():
